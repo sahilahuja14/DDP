@@ -1,0 +1,31 @@
+# Virtual Environment (Python)
+.venv/
+env/
+venv/
+ENV/
+
+# Python caching
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Database & Media (Django)
+Backend/db.sqlite3
+Backend/media/uploads/
+
+# Dependencies (React/Frontend)
+frontend/node_modules/
+frontend/build/
+frontend/.pnp
+.pnp.js
+
+# Environment Variables (CRITICAL)
+.env
+.env.local
+.env.*.local
+
+# IDE & Tooling
+.cursor/
+.vscode/
+.idea/
+.DS_Store
