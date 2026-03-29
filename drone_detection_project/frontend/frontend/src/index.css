@@ -1,0 +1,6 @@
+/* Delete everything in your existing index.css 
+  and replace it with these three lines.
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
