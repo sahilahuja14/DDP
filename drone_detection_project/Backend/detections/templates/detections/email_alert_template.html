@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: {% if is_red_alert %}#dc2626{% else %}#f59e0b{% endif %};
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 20px -30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .alert-badge {
+            display: inline-block;
+            background-color: {% if is_red_alert %}#991b1b{% else %}#92400e{% endif %};
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .info-section {
+            background-color: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid {% if is_red_alert %}#dc2626{% else %}#f59e0b{% endif %};
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .label {
+            font-weight: bold;
+            color: #6b7280;
+        }
+        .value {
+            color: #111827;
+        }
+        .coordinates {
+            font-family: monospace;
+            background-color: #f3f4f6;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+        }
+        .detection-list {
+            list-style: none;
+            padding: 0;
+        }
+        .detection-item {
+            background-color: #f9fafb;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 3px solid #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 DRONE DETECTION ALERT</h1>
+            <div class="alert-badge">{{ threat_level }} THREAT</div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-row">
+                <span class="label">Detection ID:</span>
+                <span class="value">#{{ detection_id }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Timestamp:</span>
+                <span class="value">{{ timestamp }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Confidence Level:</span>
+                <span class="value" style="color: {% if is_red_alert %}#dc2626{% else %}#f59e0b{% endif %}; font-weight: bold;">
+                    {{ confidence }}%
+                </span>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h3 style="margin-top: 0; color: #111827;">📍 Location Information</h3>
+            <div class="info-row">
+                <span class="label">Address:</span>
+                <span class="value">{{ location_address }}</span>
+            </div>
+            {% if has_coordinates %}
+            <div class="info-row">
+                <span class="label">Coordinates:</span>
+                <span class="value">
+                    <span class="coordinates">Lat: {{ latitude }}, Lon: {{ longitude }}</span>
+                </span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="info-section">
+            <h3 style="margin-top: 0; color: #111827;">🎯 Detected Objects</h3>
+            <ul class="detection-list">
+                {% for det in all_detections %}
+                <li class="detection-item">
+                    <strong>{{ det.name|capfirst }}</strong> - 
+                    <span style="color: #3b82f6;">{{ det.confidence_percent }}% confidence</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-top: 20px; border-left: 4px solid #f59e0b;">
+            <p style="margin: 0; color: #92400e;">
+                <strong>⚠️ Action Required:</strong> Please review this detection immediately. 
+                {% if is_red_alert %}
+                This is a CRITICAL alert with high confidence. Immediate response may be necessary.
+                {% else %}
+                Monitor the situation and take appropriate action based on your security protocols.
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>This is an automated alert from DroneDetect Security System</p>
+            <p>Detection ID: {{ detection_id }} | Generated at {{ timestamp }}</p>
+        </div>
+    </div>
+</body>
+</html>

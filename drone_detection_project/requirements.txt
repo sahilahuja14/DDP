@@ -1,2 +1,16 @@
-ultralytics
-opencv-python
+# Python dependencies for the backend and local detector.
+# Frontend dependencies are managed separately in frontend/package.json.
+#
+# Django 6.x requires Python 3.12+, so use Django 5.2.x on Python 3.11.
+Django==5.2.12
+djangorestframework==3.16.1
+django-cors-headers==4.9.0
+python-dotenv==1.2.1
+
+ultralytics==8.3.235
+torch==2.9.1
+torchvision==0.24.1
+opencv-python==4.12.0.88
+Pillow==12.0.0
+geopy==2.4.1
+reportlab==4.4.9

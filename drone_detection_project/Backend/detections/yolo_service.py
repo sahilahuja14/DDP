@@ -14,7 +14,11 @@ _MODEL: Optional[YOLO] = None
 def get_model() -> YOLO:
     global _MODEL
     if _MODEL is None:
-        _MODEL = YOLO(settings.YOLO_WEIGHTS_PATH)
+        model_path = settings.YOLO_WEIGHTS_PATH
+        import os
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"YOLO model file not found at: {model_path}")
+        _MODEL = YOLO(model_path)
     return _MODEL
 
 
@@ -108,11 +112,21 @@ def run_inference(image_bytes: bytes) -> Tuple[str, List[Dict[str, Any]], Dict[s
     """
     Returns (annotated_image_base64_jpeg, detections, alert)
     """
-    model = get_model()
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    try:
+        model = get_model()
+    except Exception as e:
+        raise Exception(f"Failed to load YOLO model: {str(e)}")
+    
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as e:
+        raise Exception(f"Failed to open image: {str(e)}")
 
-    results = model(img, verbose=False)
-    r0 = results[0]
+    try:
+        results = model(img, verbose=False)
+        r0 = results[0]
+    except Exception as e:
+        raise Exception(f"YOLO inference failed: {str(e)}")
 
     dets: List[Dict[str, Any]] = []
     max_conf = None
@@ -120,23 +134,28 @@ def run_inference(image_bytes: bytes) -> Tuple[str, List[Dict[str, Any]], Dict[s
 
     if getattr(r0, "boxes", None) is not None and r0.boxes is not None:
         for b in r0.boxes:
-            cls_id = int(b.cls[0]) if hasattr(b, "cls") else None
-            label = model.names.get(cls_id, str(cls_id)) if cls_id is not None else "unknown"
-            conf = float(b.conf[0]) if hasattr(b, "conf") else None
-            xyxy = b.xyxy[0].tolist() if hasattr(b, "xyxy") else None
+            try:
+                cls_id = int(b.cls[0]) if hasattr(b, "cls") and len(b.cls) > 0 else None
+                label = model.names.get(cls_id, str(cls_id)) if cls_id is not None else "unknown"
+                conf = float(b.conf[0]) if hasattr(b, "conf") and len(b.conf) > 0 else None
+                xyxy = b.xyxy[0].tolist() if hasattr(b, "xyxy") and len(b.xyxy) > 0 else None
 
-            if conf is not None:
-                max_conf = conf if max_conf is None else max(max_conf, conf)
-                if str(label).lower() == "drone":
-                    drone_max_conf = max(drone_max_conf, conf)
+                if conf is not None:
+                    max_conf = conf if max_conf is None else max(max_conf, conf)
+                    if str(label).lower() == "drone":
+                        drone_max_conf = max(drone_max_conf, conf)
 
-            dets.append(
-                {
-                    "label": label,
-                    "confidence": conf,
-                    "bbox_xyxy": xyxy,
-                }
-            )
+                dets.append(
+                    {
+                        "label": label,
+                        "confidence": conf,
+                        "bbox_xyxy": xyxy,
+                    }
+                )
+            except Exception as e:
+                # Skip problematic detections but continue processing
+                print(f"Warning: Error processing detection box: {e}")
+                continue
 
     alert = {
         "is_red_alert": drone_max_conf >= 0.85,
@@ -145,12 +164,15 @@ def run_inference(image_bytes: bytes) -> Tuple[str, List[Dict[str, Any]], Dict[s
         "max_confidence": max_conf,
     }
 
-    # Annotated image (Ultralytics returns a numpy array in BGR/RGB depending; Pillow handles RGB)
-    annotated = r0.plot()  # numpy array
-    annotated_img = Image.fromarray(annotated)
-    buf = io.BytesIO()
-    annotated_img.save(buf, format="JPEG", quality=90)
-    annotated_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    try:
+        # Annotated image (Ultralytics returns a numpy array in BGR/RGB depending; Pillow handles RGB)
+        annotated = r0.plot()  # numpy array
+        annotated_img = Image.fromarray(annotated)
+        buf = io.BytesIO()
+        annotated_img.save(buf, format="JPEG", quality=90)
+        annotated_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        raise Exception(f"Failed to create annotated image: {str(e)}")
 
     return annotated_b64, dets, alert
 

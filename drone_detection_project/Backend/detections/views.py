@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from django.conf import settings
@@ -15,6 +16,10 @@ from .serializers import DetectionSerializer
 from .yolo_service import run_inference, extract_gps_and_telemetry
 from .reporting import build_detection_report_json, build_detection_report_pdf_bytes
 from .training_stub import run_fake_training
+from .email_service import send_drone_alert_email
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class DetectView(APIView):
@@ -27,10 +32,12 @@ class DetectView(APIView):
 
         try:
             raw_bytes = image_file.read()
+            if len(raw_bytes) == 0:
+                return Response({"error": "Uploaded image file is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
             gps, telemetry = extract_gps_and_telemetry(raw_bytes)
 
-            # Optional client-supplied coordinates (e.g., browser Geolocation API)
+            # Optional client-supplied coordinates
             lat_str = request.data.get("latitude")
             lon_str = request.data.get("longitude")
             if lat_str and lon_str:
@@ -40,16 +47,14 @@ class DetectView(APIView):
                     gps["has_gps"] = True
                     gps["latitude"] = lat
                     gps["longitude"] = lon
-                    # If EXIF didn't give us an address, try reverse-geocoding.
                     if not gps.get("address"):
                         from geopy.geocoders import Nominatim
-
                         geolocator = Nominatim(user_agent="drone-detect-app")
                         location = geolocator.reverse((lat, lon), zoom=18, language="en")
                         gps["address"] = location.address if location else None
                 except (TypeError, ValueError):
-                    # Ignore malformed latitude/longitude
                     pass
+            
             annotated_b64, detections, alert = run_inference(raw_bytes)
 
             det_obj = Detection.objects.create(
@@ -63,16 +68,19 @@ class DetectView(APIView):
                 telemetry=telemetry,
             )
 
+            # Format detections for response
+            formatted_detections = [
+                {
+                    "name": d.get("label"),
+                    "confidence": d.get("confidence"),
+                }
+                for d in detections
+            ]
+
             response_payload = {
                 "id": det_obj.id,
                 "annotatedImage": annotated_b64,
-                "detections": [
-                    {
-                        "name": d.get("label"),
-                        "confidence": d.get("confidence"),
-                    }
-                    for d in detections
-                ],
+                "detections": formatted_detections,
                 "location": {
                     "coordinates": (
                         {
@@ -87,8 +95,40 @@ class DetectView(APIView):
                 "telemetry": telemetry,
                 "alert": alert,
             }
+            
+            # Send email alert if this is a red alert
+            if alert.get("is_red_alert", False):
+                logger.info(f"🚨 Red alert detected! Attempting to send email...")
+                try:
+                    email_data = {
+                        "id": det_obj.id,
+                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+                        "detections": formatted_detections,
+                        "location": {
+                            "coordinates": {
+                                "lat": gps.get("latitude"),
+                                "lon": gps.get("longitude"),
+                            } if gps.get("latitude") and gps.get("longitude") else None,
+                            "address": gps.get("address") or "Location not available",
+                        },
+                        "alert": alert,
+                    }
+                    
+                    email_sent = send_drone_alert_email(email_data)
+                    if email_sent:
+                        logger.info(f"✅ Email alert sent successfully for detection {det_obj.id}")
+                    else:
+                        logger.warning(f"⚠️  Email alert was not sent for detection {det_obj.id}")
+                        
+                except Exception as email_error:
+                    logger.error(f"❌ Failed to send email alert: {str(email_error)}", exc_info=True)
+            else:
+                logger.info(f"ℹ️  No red alert (confidence: {alert.get('drone_max_confidence', 0)*100:.1f}%), email not sent")
+            
             return Response(response_payload, status=status.HTTP_201_CREATED)
+            
         except Exception as exc:
+            logger.error(f"Error in DetectView: {str(exc)}", exc_info=True)
             return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -133,7 +173,6 @@ class AnalyticsSummaryView(APIView):
         total_alerts = Detection.objects.filter(has_drone_alert=True).count()
         total_with_gps = Detection.objects.filter(latitude__isnull=False, longitude__isnull=False).count()
 
-        # Aggregate label counts
         label_counts = {}
         for det in Detection.objects.all():
             for d in det.detections or []:
@@ -152,10 +191,6 @@ class AnalyticsSummaryView(APIView):
 
 @api_view(["POST"])
 def start_fake_training(request):
-    """
-    Fire-and-forget: run fake training synchronously in this simple version.
-    For a real app you'd run this in a background worker.
-    """
     base_dir = Path(settings.BASE_DIR)
     log_path = base_dir / "training_logs.jsonl"
     run_fake_training(log_path)
@@ -164,9 +199,6 @@ def start_fake_training(request):
 
 class TrainingLogsView(APIView):
     def get(self, request, *args, **kwargs):
-        """
-        Simple polling endpoint returning all log lines as JSON list.
-        """
         log_file = Path(settings.BASE_DIR) / "training_logs.jsonl"
         if not log_file.exists():
             return Response({"logs": []})
@@ -181,4 +213,3 @@ class TrainingLogsView(APIView):
                 except json.JSONDecodeError:
                     continue
         return Response({"logs": logs})
-

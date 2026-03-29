@@ -4,6 +4,10 @@ env/
 venv/
 ENV/
 
+drone_detection_project/.venv311/
+.venv311/
+.ultralytics/
+
 # Python caching
 **/__pycache__/
 *.py[cod]
